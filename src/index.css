@@ -1,0 +1,5 @@
+/* Optional: avoid flash-of-unstyled-theme transitions */
+:root,
+.dark {
+  color-scheme: light dark; /* lets form controls match theme */
+}
