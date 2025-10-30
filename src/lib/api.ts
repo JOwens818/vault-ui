@@ -1,6 +1,11 @@
 import { getCookie } from "./cookies";
 
-const API_BASE = import.meta.env.VITE_API_BASE;
+const envApiBase = import.meta.env.VITE_API_BASE;
+const API_BASE = envApiBase ?? "";
+
+if (!API_BASE) {
+  throw new Error("Missing API base URL. Did you forget to set VITE_API_BASE?");
+}
 
 // -- Types --------------------------------------------------------------------
 

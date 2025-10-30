@@ -40,6 +40,52 @@ function useDebounce<T>(value: T, delay = 300): T {
   return debounced;
 }
 
+async function writeToClipboard(text: string) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard access is not available in this environment.");
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+
+  document.body.appendChild(textarea);
+
+  const selection = window.getSelection();
+  const originalRange =
+    selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+
+  textarea.focus();
+  textarea.select();
+
+  try {
+    if (typeof document.execCommand !== "function") {
+      throw new Error("Clipboard access is not available in this browser.");
+    }
+    const succeeded = document.execCommand("copy");
+    if (!succeeded) {
+      throw new Error("Copy command was rejected.");
+    }
+  } finally {
+    if (originalRange) {
+      selection?.removeAllRanges();
+      selection?.addRange(originalRange);
+    } else {
+      selection?.removeAllRanges();
+    }
+    document.body.removeChild(textarea);
+  }
+}
+
 export function SecretsList() {
   const [query, setQuery] = React.useState("");
   const debounced = useDebounce(query, 300);
@@ -51,6 +97,7 @@ export function SecretsList() {
   const [details, setDetails] = React.useState<Record<string, SecretDetail | undefined>>({});
   const [open,    setOpen]    = React.useState<Record<string, boolean>>({});
   const [fetchingId, setFetchingId] = React.useState<string | null>(null);
+  const [copyingId, setCopyingId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -84,37 +131,56 @@ export function SecretsList() {
     );
   }, [debounced, items]);
 
+  async function loadDetail(id: string) {
+    const cached = details[id];
+    if (cached) return cached;
+    const fetched = await apiFetch<SecretDetail>(`/api/secrets/${encodeURIComponent(id)}`);
+    if (!fetched) {
+      throw new Error("Secret is unavailable. Please try again.");
+    }
+    setDetails((prev) => ({ ...prev, [id]: fetched }));
+    return fetched;
+  }
+
   async function reveal(id: string) {
     if (open[id]) {
       setOpen((m) => ({ ...m, [id]: false }));
       return;
     }
-    if (!details[id]) {
-      try {
-        setFetchingId(id);
-        const detail = await apiFetch<SecretDetail>(`/api/secrets/${encodeURIComponent(id)}`);
-        setDetails((m) => ({ ...m, [id]: detail }));
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to fetch secret";
-        toaster.create({ type: "error", title: "Reveal failed", description: msg });
-        return;
-      } finally {
-        setFetchingId(null);
-      }
+    try {
+      setFetchingId(id);
+      await loadDetail(id);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to fetch secret";
+      toaster.create({ type: "error", title: "Reveal failed", description: msg });
+      return;
+    } finally {
+      setFetchingId(null);
     }
     setOpen((m) => ({ ...m, [id]: true }));
   }
 
-  function copy(id: string) {
-    const v = details[id]?.data;
-    if (!v) {
-      toaster.create({ type: "warning", title: "Nothing to copy", description: "Reveal first." });
-      return;
+  async function copy(id: string) {
+    try {
+      setCopyingId(id);
+      const detail = await loadDetail(id);
+      const value = detail?.data;
+      if (!value) {
+        toaster.create({
+          type: "warning",
+          title: "Nothing to copy",
+          description: "Secret has no value.",
+        });
+        return;
+      }
+      await writeToClipboard(value);
+      toaster.create({ type: "success", title: "Copied to clipboard" });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Copy failed";
+      toaster.create({ type: "error", title: "Copy failed", description: msg });
+    } finally {
+      setCopyingId(null);
     }
-    navigator.clipboard
-      .writeText(v)
-      .then(() => toaster.create({ type: "success", title: "Copied to clipboard" }))
-      .catch(() => toaster.create({ type: "error", title: "Copy failed", description: "Try again." }));
   }
 
   function edit(id: string) {
@@ -313,6 +379,7 @@ export function SecretsList() {
                       variant="surface"
                       size={{ base: "xs", md: "sm" }}
                       onClick={() => copy(id)}
+                      loading={copyingId === id}
                     >
                       <Copy size={18} />
                     </IconButton>
