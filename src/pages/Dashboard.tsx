@@ -1,50 +1,21 @@
 // src/pages/Dashboard.tsx
-import * as React from 'react';
-import { Box, Button, Container, Heading, Stack, Text } from '@chakra-ui/react';
-import { useAuth } from '../auth/AuthContext';
+import * as React from "react";
+import { Container, Heading, Stack } from "@chakra-ui/react";
+import { useAuth } from "../auth/AuthContext";
+import { SecretsList } from "../components/SecretsList";
 
 export default function Dashboard() {
-  const { user, logout, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <Container py={10}>
-        <Text>Loading user info...</Text>
-      </Container>
-    );
-  }
-
-  if (!user) {
-    return (
-      <Container py={10}>
-        <Text>No user data found.</Text>
-      </Container>
-    );
-  }
-
+  const { user } = useAuth();
   return (
-    <Container py={10}>
-      <Box p={6} borderWidth="1px" borderRadius="xl" bg="bg.subtle" maxW="md" mx="auto">
-        <Heading size="md" mb={4} textAlign="center">
-          Dashboard
-        </Heading>
-
-        <Stack gap={3}>
-          <Text>
-            <strong>Username:</strong> {user.username}
-          </Text>
-          <Text>
-            <strong>Email:</strong> {user.email}
-          </Text>
-          <Text>
-            <strong>User ID:</strong> {user.id}
-          </Text>
-        </Stack>
-
-        <Button mt={6} colorPalette="red" onClick={logout} width="full">
-          Logout
-        </Button>
-      </Box>
+    <Container 
+      w="full"
+      maxW={{ base: "100%", md: "800px" }}   // ✅ stretch full width on mobile
+      mx="auto"  
+      py={6}>
+      <Stack gap={6}>
+        <Heading size="lg">Welcome{user?.username ? `, ${user.username}` : ""}</Heading>
+        <SecretsList />
+      </Stack>
     </Container>
   );
 }
