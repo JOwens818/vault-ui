@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import Auth from './pages/Auth';
 import Dashboard from './pages/Dashboard';
 import RequireAuth from './auth/RequireAuth';
+import CreateSecret from './pages/CreateSecret';
 
 export default function App() {
   return (
@@ -14,7 +15,7 @@ export default function App() {
         <Route path="/auth" element={<Auth />} />
         <Route element={<RequireAuth />}>
           <Route path="/dashboard" element={<Dashboard />} />
-          {/* more protected routes here */}
+          <Route path="/secrets/new" element={<CreateSecret />} />
         </Route>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

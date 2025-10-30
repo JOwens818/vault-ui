@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       const me = await apiFetch<UserInfoResponse>('/api/users/user-info');
-      setUser({ id: me.id, email: me.email, username: me.username });
+      setUser({ id: me!.id, email: me!.email, username: me!.username });
     } catch {
       deleteCookie('token');
       setUser(null);
@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ username, password })
     });
 
-    setCookie('token', data.token, {
+    setCookie('token', data!.token, {
       maxAge: 60 * 60 * 24,
       sameSite: 'Lax',
       // Use the browser's location, not react-router's Location
@@ -90,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       path: '/'
     });
 
-    setUser({ id: data.id, email: data.email, username: data.username });
+    setUser({ id: data!.id, email: data!.email, username: data!.username });
   }, []);
 
   const logout = React.useCallback(() => {

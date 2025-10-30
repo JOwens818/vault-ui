@@ -1,50 +1,41 @@
 // src/pages/Dashboard.tsx
-import * as React from 'react';
-import { Box, Button, Container, Heading, Stack, Text } from '@chakra-ui/react';
-import { useAuth } from '../auth/AuthContext';
+import * as React from "react";
+import { Button, Container, Heading, Stack } from "@chakra-ui/react";
+import { Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import { SecretsList } from "../components/SecretsList";
 
 export default function Dashboard() {
-  const { user, logout, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <Container py={10}>
-        <Text>Loading user info...</Text>
-      </Container>
-    );
-  }
-
-  if (!user) {
-    return (
-      <Container py={10}>
-        <Text>No user data found.</Text>
-      </Container>
-    );
-  }
-
+  const navigate = useNavigate();
+  const { user } = useAuth();
   return (
-    <Container py={10}>
-      <Box p={6} borderWidth="1px" borderRadius="xl" bg="bg.subtle" maxW="md" mx="auto">
-        <Heading size="md" mb={4} textAlign="center">
-          Dashboard
-        </Heading>
-
-        <Stack gap={3}>
-          <Text>
-            <strong>Username:</strong> {user.username}
-          </Text>
-          <Text>
-            <strong>Email:</strong> {user.email}
-          </Text>
-          <Text>
-            <strong>User ID:</strong> {user.id}
-          </Text>
+    <Container 
+      w="full"
+      maxW={{ base: "100%", md: "800px" }}   // ✅ stretch full width on mobile
+      mx="auto"  
+      py={6}>
+      <Stack gap={6}>
+        <Stack
+          direction={{ base: "column", sm: "row" }}
+          align={{ base: "flex-start", sm: "center" }}
+          justify="space-between"
+          gap={3}
+        >
+          <Heading size="lg">Welcome{user?.username ? `, ${user.username}` : ""}</Heading>
+          <Button
+            onClick={() => navigate("/secrets/new")}
+            w={{ base: "full", sm: "auto" }}
+            display="inline-flex"
+            gap="2"
+            colorPalette="blue"
+          >
+            <Plus size={16} />
+            Create secret
+          </Button>
         </Stack>
-
-        <Button mt={6} colorPalette="red" onClick={logout} width="full">
-          Logout
-        </Button>
-      </Box>
+        <SecretsList />
+      </Stack>
     </Container>
   );
 }

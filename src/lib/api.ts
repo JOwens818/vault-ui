@@ -1,59 +1,120 @@
-// src/lib/api.ts
-import { getCookie } from './cookies';
+import { getCookie } from "./cookies";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:4000';
+const envApiBase = import.meta.env.VITE_API_BASE;
+const API_BASE = envApiBase ?? "";
 
-type ApiOk<T> = { status: 'success'; data: T };
-type ApiErr = { status: 'error'; message: string };
-type FetchInit = globalThis.RequestInit;
+if (!API_BASE) {
+  throw new Error("Missing API base URL. Did you forget to set VITE_API_BASE?");
+}
 
+// -- Types --------------------------------------------------------------------
+
+export interface ApiEnvelopeOk<T> {
+  status: "success";
+  data: T;
+}
+
+export interface ApiEnvelopeErr {
+  status: "error";
+  message: string;
+}
+
+// Union of expected API shapes
+type ApiEnvelope<T> = ApiEnvelopeOk<T> | ApiEnvelopeErr;
+
+// Utility to represent API errors
+export class ApiError extends Error {
+  status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// Optional global 401 handler
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn;
 }
 
-export async function apiFetch<T>(path: string, init: FetchInit = {}): Promise<T> {
-  const token = getCookie('token');
-  const headers = new Headers(init.headers || {});
-  headers.set('Content-Type', 'application/json');
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+// -- Core fetch wrapper -------------------------------------------------------
 
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
-  const text = await res.text();
+export async function apiFetch<T>(
+  path: string,
+  init: globalThis.RequestInit = {}
+): Promise<T | undefined> {
+  const token = getCookie("token");
 
-  // Call the handler on 401 regardless of body shape
+  const headers = new Headers(init.headers);
+  if (!headers.has("Content-Type") && init.body) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const method = (init.method ?? "GET").toUpperCase();
+  const cache = init.cache ?? (method === "GET" ? "no-store" : undefined);
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    method,
+    headers,
+    cache,
+  });
+
   if (res.status === 401 && onUnauthorized) {
     onUnauthorized();
   }
 
+  if (res.status === 304) {
+    return undefined; // No new data, keep current
+  }
+
+  const text = await res.text();
+
   if (!text) {
-    if (!res.ok) throw makeHttpError(res);
-    // @ts-expect-error allow void
+    if (!res.ok) throw new ApiError(res.statusText, res.status);
     return undefined;
   }
 
-  let json: ApiOk<T> | ApiErr;
+  let json: unknown;
   try {
     json = JSON.parse(text);
   } catch {
-    if (!res.ok) throw makeHttpError(res);
-    // @ts-expect-error allow void
+    if (!res.ok) throw new ApiError(res.statusText, res.status);
     return undefined;
   }
 
-  if (!res.ok || (json as ApiErr).status === 'error') {
-    if (res.status === 401 && onUnauthorized) onUnauthorized();
-    const msg = (json as ApiErr).message || res.statusText || 'Request failed';
-    const err = new Error(msg) as Error & { status?: number };
-    err.status = res.status;
-    throw err;
+  // If it's an envelope {status: "error" | "success"}
+  if (isApiEnvelopeErr(json)) {
+    throw new ApiError(json.message, res.status);
   }
 
-  return (json as ApiOk<T>).data;
+  if (isApiEnvelopeOk<T>(json)) {
+    return json.data;
+  }
+
+  // Otherwise, return as-is (raw JSON response)
+  return json as T;
 }
 
-function makeHttpError(res: Response) {
-  const err = new Error(res.statusText || 'Request failed') as Error & { status?: number };
-  err.status = res.status;
-  return err;
+// -- Type guards --------------------------------------------------------------
+
+function isApiEnvelopeOk<T>(v: unknown): v is ApiEnvelopeOk<T> {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as Record<string, unknown>).status === "success" &&
+    "data" in (v as Record<string, unknown>)
+  );
+}
+
+function isApiEnvelopeErr(v: unknown): v is ApiEnvelopeErr {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as Record<string, unknown>).status === "error" &&
+    typeof (v as Record<string, unknown>).message === "string"
+  );
 }

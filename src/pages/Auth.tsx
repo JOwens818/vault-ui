@@ -88,6 +88,10 @@ export default function Auth() {
         })
       });
 
+      if (!res) {
+        throw new Error('No response from server. Please try again.');
+      }
+
       // Store JWT cookie; then bootstrap user via /user-info
       setCookie('token', res.token, {
         maxAge: 60 * 60 * 24,
