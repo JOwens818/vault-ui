@@ -5,6 +5,7 @@ import Auth from './pages/Auth';
 import Dashboard from './pages/Dashboard';
 import RequireAuth from './auth/RequireAuth';
 import CreateSecret from './pages/CreateSecret';
+import EditSecret from './pages/EditSecret';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route element={<RequireAuth />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/secrets/new" element={<CreateSecret />} />
+          <Route path="/secrets/:id/edit" element={<EditSecret />} />
         </Route>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
