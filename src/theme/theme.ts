@@ -15,6 +15,32 @@ export const system = createSystem(defaultConfig, {
         heading: { value: 'Inter, system-ui, sans-serif' },
         body: { value: 'Inter, system-ui, sans-serif' }
       }
+    },
+    recipes: {
+      input: {
+        variants: {
+          size: {
+            sm: {
+              textStyle: 'md'
+            },
+            md: {
+              textStyle: 'md'
+            }
+          }
+        }
+      },
+      textarea: {
+        variants: {
+          size: {
+            sm: {
+              textStyle: 'md'
+            },
+            md: {
+              textStyle: 'md'
+            }
+          }
+        }
+      }
     }
   }
 });

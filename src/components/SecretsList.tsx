@@ -19,10 +19,12 @@ import {
   Stack,
   Text,
   VisuallyHidden,
+  Tooltip,
+  RadioGroup,
 } from "@chakra-ui/react";
-import { Copy, Eye, EyeOff, RefreshCw, Pencil, Trash2, Search } from "lucide-react";
+import { Copy, Eye, EyeOff, RefreshCw, Pencil, Trash2, Search, Upload, Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../lib/api";
+import { apiFetch, apiFetchBlob } from "../lib/api";
 import { toaster } from "./Toaster";
 
 type SecretSummary = {
@@ -110,28 +112,50 @@ export function SecretsList() {
   const [copyingId, setCopyingId] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; label: string } | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [importing, setImporting] = React.useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
+  const [exportFormat, setExportFormat] = React.useState<"csv" | "xlsx">("csv");
+  const [exporting, setExporting] = React.useState(false);
+  const mountedRef = React.useRef(false);
 
   React.useEffect(() => {
-    let active = true;
-    (async () => {
-      setError(null);
-      setLoading(true);
-      try {
-        const data = await apiFetch<SecretSummary[]>("/api/secrets");
-        if (!active) return;
-        if (Array.isArray(data)) setItems(data);
-        // if undefined (304/no body), keep previous items
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to load secrets";
-        if (active) setError(msg);
-      } finally {
-        if (active) setLoading(false); // ✅ always flip to false for the live instance
-      }
-    })();
+    mountedRef.current = true;
     return () => {
-      active = false;
+      mountedRef.current = false;
     };
   }, []);
+
+  const loadSecrets = React.useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!mountedRef.current) return;
+      if (!options?.silent) {
+        setLoading(true);
+      }
+      setError(null);
+      try {
+        const data = await apiFetch<SecretSummary[]>("/api/secrets");
+        if (!mountedRef.current) return;
+        if (Array.isArray(data)) {
+          setItems(data);
+        }
+      } catch (e) {
+        if (!mountedRef.current) return;
+        const msg = e instanceof Error ? e.message : "Failed to load secrets";
+        setError(msg);
+      } finally {
+        if (!mountedRef.current) return;
+        if (!options?.silent) {
+          setLoading(false);
+        }
+      }
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    loadSecrets();
+  }, [loadSecrets]);
 
 
   const filtered = React.useMemo<SecretSummary[]>(() => {
@@ -192,6 +216,97 @@ export function SecretsList() {
       toaster.create({ type: "error", title: "Copy failed", description: msg });
     } finally {
       setCopyingId(null);
+    }
+  }
+
+  function importSecrets() {
+    if (importing) return;
+    fileInputRef.current?.click();
+  }
+
+  async function handleImportChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (!extension || !["csv", "xlsx"].includes(extension)) {
+      toaster.create({
+        type: "error",
+        title: "Unsupported file",
+        description: "Please choose a CSV or XLSX file.",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    setImporting(true);
+    try {
+      await apiFetch("/api/secrets/import", {
+        method: "POST",
+        body: formData,
+      });
+      toaster.create({
+        type: "success",
+        title: "Import started",
+        description: "Your secrets are being processed.",
+      });
+      await loadSecrets({ silent: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to import secrets";
+      toaster.create({
+        type: "error",
+        title: "Import failed",
+        description: message,
+      });
+    } finally {
+      setImporting(false);
+      event.target.value = "";
+    }
+  }
+
+  function openExportDialog() {
+    setExportDialogOpen(true);
+  }
+
+  function closeExportDialog() {
+    if (exporting) return;
+    setExportDialogOpen(false);
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const blob = await apiFetchBlob(`/api/secrets/export?format=${exportFormat}`, {
+        method: "GET",
+      });
+      const extension = exportFormat === "csv" ? "csv" : "xlsx";
+      const filename = `secrets-${new Date().toISOString().slice(0, 10)}.${extension}`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toaster.create({
+        type: "success",
+        title: "Export ready",
+        description: `Downloaded ${extension.toUpperCase()} file.`,
+      });
+      setExportDialogOpen(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to export secrets";
+      toaster.create({
+        type: "error",
+        title: "Export failed",
+        description: message,
+      });
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -265,19 +380,53 @@ export function SecretsList() {
             </Text>
           </HStack>
 
-          {/* Search */}
-          <Box position="relative" w="full">
-            <Input
-              placeholder='Search secrets (e.g., "my bank account")'
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              pr="10"
-              aria-label="Search secrets"
-            />
-            <Box position="absolute" right="2" top="50%" transform="translateY(-50%)">
-              <Search size={18} />
+          {/* Search + bulk actions */}
+          <HStack gap={2} align="center">
+            <Box position="relative" flex="1">
+              <Input
+                placeholder='Search secrets (e.g., "my bank account")'
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                pr="10"
+                aria-label="Search secrets"
+              />
+              <Box position="absolute" right="2" top="50%" transform="translateY(-50%)">
+                <Search size={18} />
+              </Box>
             </Box>
-          </Box>
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <IconButton
+                  aria-label="Import secrets"
+                  variant="surface"
+                  size={{ base: "xs", md: "sm" }}
+                  onClick={importSecrets}
+                  loading={importing}
+                  disabled={importing}
+                >
+                  <Upload size={18} />
+                </IconButton>
+              </Tooltip.Trigger>
+              <Tooltip.Positioner>
+                <Tooltip.Content>Import secrets</Tooltip.Content>
+              </Tooltip.Positioner>
+            </Tooltip.Root>
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <IconButton
+                  aria-label="Export secrets"
+                  variant="surface"
+                  size={{ base: "xs", md: "sm" }}
+                  onClick={openExportDialog}
+                >
+                  <Download size={18} />
+                </IconButton>
+              </Tooltip.Trigger>
+              <Tooltip.Positioner>
+                <Tooltip.Content>Export secrets</Tooltip.Content>
+              </Tooltip.Positioner>
+            </Tooltip.Root>
+          </HStack>
 
           {/* Divider replacement */}
           <Box borderTopWidth="1px" />
@@ -319,16 +468,17 @@ export function SecretsList() {
           {/* List */}
           {filtered.length > 0 && (
             <Stack gap={3}>
-              {filtered.map((s) => {
-                const id = s._id;
-                const isOpen = !!open[id];
-                const detail = details[id];
-                const busy = fetchingId === id;
+            {filtered.map((s) => {
+              const id = s._id;
+              const isOpen = !!open[id];
+              const detail = details[id];
+              const busy = fetchingId === id;
+              const revealLabel = isOpen ? "Hide secret" : "Reveal secret";
 
-                return (
-                  <Stack
-                    key={id}
-                    borderWidth="1px"
+              return (
+                <Stack
+                  key={id}
+                  borderWidth="1px"
                     borderRadius="lg"
                     p={4}
                     bg="bg"
@@ -424,48 +574,76 @@ export function SecretsList() {
                       // compact buttons on mobile
                       style={{}}
                     >
-                      <IconButton
-                        aria-label={isOpen ? "Hide secret" : "Reveal secret"}
-                        variant="surface"
-                        size={{ base: "xs", md: "sm" }}
-                        loading={busy}
-                        onClick={() => reveal(id)}
-                      >
-                        {isOpen ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </IconButton>
+                    <Tooltip.Root>
+                      <Tooltip.Trigger asChild>
+                        <IconButton
+                          aria-label={revealLabel}
+                          variant="surface"
+                          size={{ base: "xs", md: "sm" }}
+                          loading={busy}
+                          onClick={() => reveal(id)}
+                        >
+                          {isOpen ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </IconButton>
+                      </Tooltip.Trigger>
+                      <Tooltip.Positioner>
+                        <Tooltip.Content>{revealLabel}</Tooltip.Content>
+                      </Tooltip.Positioner>
+                    </Tooltip.Root>
 
-                      <IconButton
-                        aria-label="Copy secret"
-                        variant="surface"
-                        size={{ base: "xs", md: "sm" }}
-                        onClick={() => copy(id)}
-                        loading={copyingId === id}
-                      >
-                        <Copy size={18} />
-                      </IconButton>
+                    <Tooltip.Root>
+                      <Tooltip.Trigger asChild>
+                        <IconButton
+                          aria-label="Copy secret"
+                          variant="surface"
+                          size={{ base: "xs", md: "sm" }}
+                          onClick={() => copy(id)}
+                          loading={copyingId === id}
+                        >
+                          <Copy size={18} />
+                        </IconButton>
+                      </Tooltip.Trigger>
+                      <Tooltip.Positioner>
+                        <Tooltip.Content>Copy secret</Tooltip.Content>
+                      </Tooltip.Positioner>
+                    </Tooltip.Root>
 
-                      <IconButton
-                        aria-label="Edit secret"
-                        variant="surface"
-                        size={{ base: "xs", md: "sm" }}
-                        onClick={() => edit(id)}
-                      >
-                        <Pencil size={18} />
-                      </IconButton>
+                    <Tooltip.Root>
+                      <Tooltip.Trigger asChild>
+                        <IconButton
+                          aria-label="Edit secret"
+                          variant="surface"
+                          size={{ base: "xs", md: "sm" }}
+                          onClick={() => edit(id)}
+                        >
+                          <Pencil size={18} />
+                        </IconButton>
+                      </Tooltip.Trigger>
+                      <Tooltip.Positioner>
+                        <Tooltip.Content>Edit secret</Tooltip.Content>
+                      </Tooltip.Positioner>
+                    </Tooltip.Root>
 
-                      <IconButton
-                        aria-label="Delete secret"
-                        variant="surface"
-                        size={{ base: "xs", md: "sm" }}
-                        colorPalette="red"
-                        onClick={() => remove(id)}
-                      >
-                        <Trash2 size={18} />
-                      </IconButton>
-                    </HStack>
-                  </Stack>
-                );
-              })}
+                    <Tooltip.Root>
+                      <Tooltip.Trigger asChild>
+                        <IconButton
+                          aria-label="Delete secret"
+                          variant="surface"
+                          size={{ base: "xs", md: "sm" }}
+                          colorPalette="red"
+                          onClick={() => remove(id)}
+                        >
+                          <Trash2 size={18} />
+                        </IconButton>
+                      </Tooltip.Trigger>
+                      <Tooltip.Positioner>
+                        <Tooltip.Content>Delete secret</Tooltip.Content>
+                      </Tooltip.Positioner>
+                    </Tooltip.Root>
+                  </HStack>
+                </Stack>
+              );
+            })}
             </Stack>
           )}
         </Stack>
@@ -502,6 +680,86 @@ export function SecretsList() {
           </DialogContent>
         </DialogPositioner>
       </DialogRoot>
+      <DialogRoot
+        open={exportDialogOpen}
+        onOpenChange={({ open }) => {
+          if (!open) closeExportDialog();
+        }}
+      >
+        <DialogBackdrop />
+        <DialogPositioner>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Export secrets</DialogTitle>
+            </DialogHeader>
+            <DialogBody>
+              <Stack gap={4}>
+                <Text color="fg.muted" fontSize="sm">
+                  Choose the file format for your export.
+                </Text>
+                <RadioGroup.Root
+                  value={exportFormat}
+                  onValueChange={({ value }) => setExportFormat(value as "csv" | "xlsx")}
+                >
+                  <Stack gap={2}>
+                    <RadioGroup.Item value="csv">
+                      <HStack
+                        gap={3}
+                        px={3}
+                        py={2}
+                        cursor="pointer"
+                        _hover={{ bg: "bg.muted" }}
+                      >
+                        <RadioGroup.ItemControl>
+                          <RadioGroup.ItemIndicator />
+                        </RadioGroup.ItemControl>
+                        <RadioGroup.ItemText>CSV (.csv)</RadioGroup.ItemText>
+                      </HStack>
+                      <RadioGroup.ItemHiddenInput />
+                    </RadioGroup.Item>
+                    <RadioGroup.Item value="xlsx">
+                      <HStack
+                        gap={3}
+                        px={3}
+                        py={2}
+                        cursor="pointer"
+                        _hover={{ bg: "bg.muted" }}
+                      >
+                        <RadioGroup.ItemControl>
+                          <RadioGroup.ItemIndicator />
+                        </RadioGroup.ItemControl>
+                        <RadioGroup.ItemText>Excel (.xlsx)</RadioGroup.ItemText>
+                      </HStack>
+                      <RadioGroup.ItemHiddenInput />
+                    </RadioGroup.Item>
+                  </Stack>
+                </RadioGroup.Root>
+              </Stack>
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="outline" onClick={closeExportDialog} disabled={exporting}>
+                Cancel
+              </Button>
+              <Button
+                colorPalette="teal"
+                ml={3}
+                onClick={handleExport}
+                loading={exporting}
+                disabled={exporting}
+              >
+                Download
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </DialogPositioner>
+      </DialogRoot>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        style={{ display: "none" }}
+        onChange={handleImportChange}
+      />
     </>
   );
 }

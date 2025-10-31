@@ -137,10 +137,8 @@ export default function EditSecret() {
         label: form.label.trim(),
         data: form.data,
       };
-      const notesValue = form.notes.trim();
-      if (notesValue) {
-        payload.notes = notesValue;
-      }
+      const trimmedNotes = form.notes.trim();
+      payload.notes = form.notes === "" ? "" : trimmedNotes;
 
       await apiFetch(`/api/secrets/${encodeURIComponent(id)}`, {
         method: "PUT",
@@ -269,7 +267,7 @@ export default function EditSecret() {
                 </Button>
                 <Button
                   type="submit"
-                  colorPalette="blue"
+                  colorPalette="teal"
                   disabled={submitting}
                   loading={submitting}
                   loadingText="Updating..."

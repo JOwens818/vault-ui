@@ -1,7 +1,8 @@
 // src/pages/Auth.tsx
 import * as React from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { Box, Button, Container, Heading, Input, Stack, Text, Tabs } from '@chakra-ui/react';
+import { Box, Button, Container, Heading, Input, Stack, Text, Tabs, IconButton, InputGroup } from '@chakra-ui/react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -60,6 +61,8 @@ export default function Auth() {
 
   const loginForm = useForm<LoginData>({ resolver: zodResolver(loginSchema) });
   const signupForm = useForm<SignupData>({ resolver: zodResolver(signupSchema) });
+  const [showLoginPassword, setShowLoginPassword] = React.useState(false);
+  const [showSignupPassword, setShowSignupPassword] = React.useState(false);
 
   // ----- handlers -----
   const onLoginSubmit = loginForm.handleSubmit(async (data) => {
@@ -139,14 +142,33 @@ export default function Auth() {
                   </Text>
                 )}
 
-                <Input placeholder="Password" type="password" autoComplete="current-password" variant="flushed" {...loginForm.register('password')} />
+                <InputGroup
+                  endElement={
+                    <IconButton
+                      aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowLoginPassword((prev) => !prev)}
+                    >
+                      {showLoginPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </IconButton>
+                  }
+                >
+                  <Input
+                    placeholder="Password"
+                    type={showLoginPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    variant="flushed"
+                    {...loginForm.register('password')}
+                  />
+                </InputGroup>
                 {loginForm.formState.errors.password && (
                   <Text color="red.500" fontSize="sm">
                     {loginForm.formState.errors.password.message}
                   </Text>
                 )}
 
-                <Button type="submit" colorPalette="blue" loading={loginForm.formState.isSubmitting}>
+                <Button type="submit" colorPalette="teal" loading={loginForm.formState.isSubmitting}>
                   Continue
                 </Button>
               </Stack>
@@ -170,14 +192,33 @@ export default function Auth() {
                   </Text>
                 )}
 
-                <Input placeholder="Create a password" type="password" autoComplete="new-password" variant="flushed" {...signupForm.register('password')} />
+                <InputGroup
+                  endElement={
+                    <IconButton
+                      aria-label={showSignupPassword ? 'Hide password' : 'Show password'}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowSignupPassword((prev) => !prev)}
+                    >
+                      {showSignupPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </IconButton>
+                  }
+                >
+                  <Input
+                    placeholder="Create a password"
+                    type={showSignupPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    variant="flushed"
+                    {...signupForm.register('password')}
+                  />
+                </InputGroup>
                 {signupForm.formState.errors.password && (
                   <Text color="red.500" fontSize="sm">
                     {signupForm.formState.errors.password.message}
                   </Text>
                 )}
 
-                <Button type="submit" colorPalette="blue" loading={signupForm.formState.isSubmitting}>
+                <Button type="submit" colorPalette="teal" loading={signupForm.formState.isSubmitting}>
                   Create account
                 </Button>
               </Stack>

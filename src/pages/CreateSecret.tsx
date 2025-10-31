@@ -163,7 +163,7 @@ export default function CreateSecret() {
             </Button>
             <Button
               type="submit"
-              colorPalette="blue"
+              colorPalette="teal"
               disabled={submitting}
               loading={submitting}
               loadingText="Creating..."
