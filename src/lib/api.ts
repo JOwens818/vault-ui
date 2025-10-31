@@ -1,10 +1,22 @@
 import { getCookie } from "./cookies";
 
-const envApiBase = import.meta.env.VITE_API_BASE;
-const API_BASE = envApiBase ?? "";
+type RuntimeConfig = { apiBase?: string };
+const runtimeConfig = (globalThis as typeof globalThis & { __APP_CONFIG__?: RuntimeConfig }).__APP_CONFIG__;
+
+function normalizeBase(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+const runtimeApiBase = normalizeBase(runtimeConfig?.apiBase);
+const envApiBase = normalizeBase(import.meta.env.VITE_API_BASE);
+const API_BASE = runtimeApiBase ?? envApiBase ?? "";
 
 if (!API_BASE) {
-  throw new Error("Missing API base URL. Did you forget to set VITE_API_BASE?");
+  throw new Error(
+    "Missing API base URL. Provide API_BASE at runtime or set VITE_API_BASE for build-time fallback."
+  );
 }
 
 // -- Types --------------------------------------------------------------------
