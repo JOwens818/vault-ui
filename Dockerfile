@@ -15,6 +15,7 @@ RUN apk add --no-cache gettext
 COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /app/dist /usr/share/nginx/html
+RUN mv /usr/share/nginx/html/env.js /usr/share/nginx/html/env.template.js
 COPY --from=build /app/.app-version /etc/app-version
 COPY docker/entrypoint.sh /entrypoint.sh
 
