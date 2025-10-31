@@ -1,7 +1,6 @@
 import { getCookie } from "./cookies";
 
 type RuntimeConfig = { apiBase?: string };
-const runtimeConfig = (globalThis as typeof globalThis & { __APP_CONFIG__?: RuntimeConfig }).__APP_CONFIG__;
 
 function normalizeBase(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -9,14 +8,21 @@ function normalizeBase(value: unknown): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-const runtimeApiBase = normalizeBase(runtimeConfig?.apiBase);
-const envApiBase = normalizeBase(import.meta.env.VITE_API_BASE);
-const API_BASE = runtimeApiBase ?? envApiBase ?? "";
+function readRuntimeConfig(): RuntimeConfig | undefined {
+  return (globalThis as typeof globalThis & { __APP_CONFIG__?: RuntimeConfig }).__APP_CONFIG__;
+}
 
-if (!API_BASE) {
-  throw new Error(
-    "Missing API base URL. Provide API_BASE at runtime or set VITE_API_BASE for build-time fallback."
-  );
+const envApiBase = normalizeBase(import.meta.env.VITE_API_BASE);
+
+function resolveApiBase(): string {
+  const runtimeApiBase = normalizeBase(readRuntimeConfig()?.apiBase);
+  const base = runtimeApiBase ?? envApiBase;
+  if (!base) {
+    throw new Error(
+      "Missing API base URL. Provide API_BASE at runtime or set VITE_API_BASE for build-time fallback."
+    );
+  }
+  return base;
 }
 
 // -- Types --------------------------------------------------------------------
@@ -55,6 +61,7 @@ export async function apiFetch<T>(
   path: string,
   init: globalThis.RequestInit = {}
 ): Promise<T | undefined> {
+  const base = resolveApiBase();
   const token = getCookie("token");
 
   const headers = new Headers(init.headers);
@@ -70,7 +77,7 @@ export async function apiFetch<T>(
   const method = (init.method ?? "GET").toUpperCase();
   const cache = init.cache ?? (method === "GET" ? "no-store" : undefined);
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${base}${path}`, {
     ...init,
     method,
     headers,
@@ -117,6 +124,7 @@ export async function apiFetchBlob(
   path: string,
   init: globalThis.RequestInit = {}
 ): Promise<Blob> {
+  const base = resolveApiBase();
   const token = getCookie("token");
 
   const headers = new Headers(init.headers);
@@ -127,7 +135,7 @@ export async function apiFetchBlob(
   const method = (init.method ?? "GET").toUpperCase();
   const cache = init.cache ?? (method === "GET" ? "no-store" : undefined);
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${base}${path}`, {
     ...init,
     method,
     headers,
