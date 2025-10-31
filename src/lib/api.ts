@@ -1,10 +1,22 @@
 import { getCookie } from "./cookies";
 
-const envApiBase = import.meta.env.VITE_API_BASE;
-const API_BASE = envApiBase ?? "";
+type RuntimeConfig = { apiBase?: string };
+const runtimeConfig = (globalThis as typeof globalThis & { __APP_CONFIG__?: RuntimeConfig }).__APP_CONFIG__;
+
+function normalizeBase(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+const runtimeApiBase = normalizeBase(runtimeConfig?.apiBase);
+const envApiBase = normalizeBase(import.meta.env.VITE_API_BASE);
+const API_BASE = runtimeApiBase ?? envApiBase ?? "";
 
 if (!API_BASE) {
-  throw new Error("Missing API base URL. Did you forget to set VITE_API_BASE?");
+  throw new Error(
+    "Missing API base URL. Provide API_BASE at runtime or set VITE_API_BASE for build-time fallback."
+  );
 }
 
 // -- Types --------------------------------------------------------------------
@@ -46,7 +58,9 @@ export async function apiFetch<T>(
   const token = getCookie("token");
 
   const headers = new Headers(init.headers);
-  if (!headers.has("Content-Type") && init.body) {
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (!headers.has("Content-Type") && init.body && !isFormData) {
     headers.set("Content-Type", "application/json");
   }
   if (token) {
@@ -97,6 +111,54 @@ export async function apiFetch<T>(
 
   // Otherwise, return as-is (raw JSON response)
   return json as T;
+}
+
+export async function apiFetchBlob(
+  path: string,
+  init: globalThis.RequestInit = {}
+): Promise<Blob> {
+  const token = getCookie("token");
+
+  const headers = new Headers(init.headers);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const method = (init.method ?? "GET").toUpperCase();
+  const cache = init.cache ?? (method === "GET" ? "no-store" : undefined);
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    method,
+    headers,
+    cache,
+  });
+
+  if (res.status === 401 && onUnauthorized) {
+    onUnauthorized();
+  }
+
+  if (!res.ok) {
+    let message = res.statusText || "Request failed";
+    try {
+      const text = await res.text();
+      if (text) {
+        try {
+          const parsed = JSON.parse(text);
+          if (isApiEnvelopeErr(parsed)) {
+            message = parsed.message;
+          }
+        } catch {
+          message = text;
+        }
+      }
+    } catch {
+      // ignore parsing errors
+    }
+    throw new ApiError(message, res.status);
+  }
+
+  return res.blob();
 }
 
 // -- Type guards --------------------------------------------------------------
