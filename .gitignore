@@ -11,8 +11,6 @@ vite.config.ts.timestamp-*
 
 # Local environment files
 .env
-.env.*
-!.env.example  # keep a template version checked in
 
 # Logs
 npm-debug.log*
