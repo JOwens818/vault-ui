@@ -1,73 +1,57 @@
-# React + TypeScript + Vite
+# Vault UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Vault UI is a React application for managing sensitive secrets stored in the Vault API. Users can authenticate, search and filter existing secrets, reveal values on demand, create or edit entries, and perform bulk actions such as import and export.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- React 19 with TypeScript and Vite
+- Chakra UI component system
+- REST integration via `fetch` with runtime configuration
+- Nginx-based production container image
 
-## React Compiler
+## Prerequisites
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Node.js 20+ and npm 10+ for local development
+- Access to a running Vault API that exposes the `/api/*` endpoints expected by this UI
 
-## Expanding the ESLint configuration
+## Local Development
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Provide the API base URL. Create `.env.local` (ignored by git) and set:
+   ```
+   VITE_API_BASE=https://vault-api.example.com
+   ```
+   You can also export `VITE_API_BASE` directly in your shell before running the dev server.
+3. Start Vite:
+   ```bash
+   npm run dev
+   ```
+   The app is available at `http://localhost:5173`. Updates trigger hot reloads.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Common additional scripts:
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked
+- `npm run build` — type-check and generate a production build in `dist/`.
+- `npm run preview` — serve the production build locally at `http://localhost:4173`.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname
-      }
-      // other options...
-    }
-  }
-]);
-```
+## Runtime Configuration
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The UI resolves its backend URL at runtime. During development it reads `import.meta.env.VITE_API_BASE`. In packaged builds it loads `/env.js`, which is generated when the container starts and can be overridden with the `API_BASE` environment variable. If neither value is provided the application will fail with "Missing API base URL".
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x';
-import reactDom from 'eslint-plugin-react-dom';
+## Docker
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname
-      }
-      // other options...
-    }
-  }
-]);
-```
+1. Build the image (runs a production build and bundles it behind Nginx):
+   ```bash
+   docker build -t vault-ui .
+   ```
+2. Run the container, mapping port 3000 and pointing it at your API:
+   ```bash
+   docker run --rm -p 3000:3000 \
+     -e API_BASE=https://vault-api.example.com \
+     vault-ui
+   ```
+   The entrypoint renders `/usr/share/nginx/html/env.js` from `env.template.js`, substituting `${API_BASE}` so the frontend can reach your backend.
+
+To verify the container, open `http://localhost:3000` in a browser and inspect the logs; you should see a startup message confirming the injected `API_BASE` value.
