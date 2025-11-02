@@ -130,6 +130,7 @@ export function SecretsList() {
   const [exportFormat, setExportFormat] = React.useState<"csv" | "xlsx">("csv");
   const [exporting, setExporting] = React.useState(false);
   const mountedRef = React.useRef(false);
+  const detailRequests = React.useRef<Record<string, Promise<SecretDetail> | undefined>>({});
 
   React.useEffect(() => {
     mountedRef.current = true;
@@ -179,16 +180,37 @@ export function SecretsList() {
     );
   }, [debounced, items]);
 
-  async function loadDetail(id: string) {
-    const cached = details[id];
-    if (cached) return cached;
-    const fetched = await apiFetch<SecretDetail>(`/api/secrets/${encodeURIComponent(id)}`);
-    if (!fetched) {
-      throw new Error("Secret is unavailable. Please try again.");
-    }
-    setDetails((prev) => ({ ...prev, [id]: fetched }));
-    return fetched;
-  }
+  const loadDetail = React.useCallback(
+    async (id: string) => {
+      const cached = details[id];
+      if (cached) return cached;
+
+      const inFlight = detailRequests.current[id];
+      if (inFlight) {
+        return inFlight;
+      }
+
+      const request = (async () => {
+        const fetched = await apiFetch<SecretDetail>(`/api/secrets/${encodeURIComponent(id)}`);
+        if (!fetched) {
+          throw new Error("Secret is unavailable. Please try again.");
+        }
+        if (mountedRef.current) {
+          setDetails((prev) => ({ ...prev, [id]: fetched }));
+        }
+        return fetched;
+      })();
+
+      detailRequests.current[id] = request;
+
+      try {
+        return await request;
+      } finally {
+        delete detailRequests.current[id];
+      }
+    },
+    [details]
+  );
 
   async function reveal(id: string) {
     if (open[id]) {
@@ -207,6 +229,14 @@ export function SecretsList() {
     }
     setOpen((m) => ({ ...m, [id]: true }));
   }
+
+  const prefetchDetail = React.useCallback(
+    (id: string) => {
+      if (details[id] || detailRequests.current[id]) return;
+      loadDetail(id).catch(() => undefined);
+    },
+    [details, loadDetail]
+  );
 
   async function copy(id: string) {
     try {
@@ -610,6 +640,8 @@ export function SecretsList() {
                           variant="surface"
                           size={{ base: "xs", md: "sm" }}
                           onClick={() => copy(id)}
+                          onPointerDown={() => prefetchDetail(id)}
+                          onTouchStart={() => prefetchDetail(id)}
                           loading={copyingId === id}
                         >
                           <Copy size={18} />
