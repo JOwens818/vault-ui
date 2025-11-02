@@ -131,12 +131,30 @@ export function SecretsList() {
   const [exporting, setExporting] = React.useState(false);
   const mountedRef = React.useRef(false);
   const detailRequests = React.useRef<Record<string, Promise<SecretDetail> | undefined>>({});
+  const [isCoarsePointer, setIsCoarsePointer] = React.useState(false);
 
   React.useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const query = window.matchMedia("(pointer: coarse)");
+    const update = (matches: boolean) => setIsCoarsePointer(matches);
+    update(query.matches);
+
+    const listener = (event: MediaQueryListEvent) => update(event.matches);
+    if (typeof query.addEventListener === "function") {
+      query.addEventListener("change", listener);
+      return () => query.removeEventListener("change", listener);
+    }
+    query.addListener(listener);
+    return () => query.removeListener(listener);
   }, []);
 
   const loadSecrets = React.useCallback(
@@ -211,6 +229,33 @@ export function SecretsList() {
     },
     [details]
   );
+
+  React.useEffect(() => {
+    if (!isCoarsePointer || filtered.length === 0) return;
+
+    const pending = filtered
+      .map((item) => item._id)
+      .filter((id) => !details[id] && !detailRequests.current[id]);
+
+    if (pending.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      for (const id of pending.slice(0, 12)) {
+        if (cancelled || !mountedRef.current) break;
+        try {
+          await loadDetail(id);
+        } catch {
+          // ignore prefetch errors; reveal/copy handles them explicitly
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isCoarsePointer, filtered, details, loadDetail]);
 
   async function reveal(id: string) {
     if (open[id]) {
