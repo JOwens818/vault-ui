@@ -53,8 +53,20 @@ function useDebounce<T>(value: T, delay = 300): T {
 
 async function writeToClipboard(text: string) {
   if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-    await navigator.clipboard.writeText(text);
-    return;
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (error) {
+      const isDenied =
+        error instanceof DOMException &&
+        (error.name === "NotAllowedError" ||
+          error.name === "NotFoundError" ||
+          error.name === "SecurityError");
+      if (!isDenied) {
+        throw error;
+      }
+      // fall through to legacy approach when direct clipboard access is denied
+    }
   }
 
   if (typeof document === "undefined") {
