@@ -35,7 +35,7 @@ export function Header() {
         borderBottomWidth="1px"
         bg="bg.emphasized"
       >
-        <Heading size="md">Vautly</Heading>
+        <Heading size="md">Vaulty</Heading>
 
         <HStack gap={2}>
           <IconButton
